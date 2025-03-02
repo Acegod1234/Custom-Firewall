@@ -1,0 +1,138 @@
+from scapy.all import sniff, IP, TCP, UDP
+import signal
+
+# Firewall rules list
+rules = []
+
+class FirewallRule:
+    def __init__(self, blocked_ip="NONE", blocked_port=0, blocked_protocol="ANY"):
+        self.blocked_ip = blocked_ip
+        self.blocked_port = blocked_port
+        self.blocked_protocol = blocked_protocol
+
+    def matches(self, packet):
+        if packet.haslayer(IP):
+            src_ip = packet[IP].src
+            dst_ip = packet[IP].dst
+            protocol = "OTHER"
+            port = 0
+            
+            if packet.haslayer(TCP):
+                protocol = "TCP"
+                port = packet[TCP].dport
+            elif packet.haslayer(UDP):
+                protocol = "UDP"
+                port = packet[UDP].dport
+            
+            for rule in rules:
+                if (rule.blocked_ip != "NONE" and rule.blocked_ip != dst_ip):
+                    continue
+                if (rule.blocked_port != 0 and rule.blocked_port != port):
+                    continue
+                if (rule.blocked_protocol != "ANY" and rule.blocked_protocol != protocol):
+                    continue
+                
+                return True  # Block the packet
+            
+        return False  # Allow the packet
+
+# Function to handle SIGINT (Ctrl+C)
+def handle_interrupt(sig, frame):
+    print("\nReturning to menu...")
+    exit(0)
+
+signal.signal(signal.SIGINT, handle_interrupt)
+
+# Function to add a rule
+def add_rule():
+    blocked_ip = input("Enter blocked IP (or NONE to ignore): ")
+    blocked_port = int(input("Enter blocked port (or 0 to ignore): "))
+    blocked_protocol = input("Enter blocked protocol (TCP/UDP/ANY): ")
+
+    rules.append(FirewallRule(blocked_ip, blocked_port, blocked_protocol))
+    print("Rule added successfully!")
+
+# Function to display rules
+def display_rules():
+    if not rules:
+        print("No rules defined.")
+        return
+
+    print("\nFirewall Rules:")
+    for i, rule in enumerate(rules, 1):
+        print(f"Rule {i}: IP={rule.blocked_ip}, Port={rule.blocked_port}, Protocol={rule.blocked_protocol}")
+
+# Function to delete a rule
+def delete_rule():
+    display_rules()
+    if not rules:
+        return
+    
+    rule_index = int(input(f"Enter the rule number to delete (1 to {len(rules)}): ")) - 1
+    if 0 <= rule_index < len(rules):
+        del rules[rule_index]
+        print("Rule deleted successfully!")
+    else:
+        print("Invalid rule number.")
+
+# Function to test a packet
+def test_packet():
+    src_ip = input("Enter source IP: ")
+    dst_ip = input("Enter destination IP: ")
+    port = int(input("Enter port number: "))
+    protocol = input("Enter protocol (TCP/UDP): ")
+
+    test_packet = IP(src=src_ip, dst=dst_ip)
+    if protocol == "TCP":
+        test_packet /= TCP(dport=port)
+    elif protocol == "UDP":
+        test_packet /= UDP(dport=port)
+
+    if any(rule.matches(test_packet) for rule in rules):
+        print("Test Packet Blocked!")
+    else:
+        print("Test Packet Allowed!")
+
+# Function to capture live traffic
+def capture_traffic():
+    print("\nCapturing traffic... Press Ctrl+C to stop.")
+    sniff(filter="ip", prn=process_packet, store=0)
+
+# Function to process a packet
+def process_packet(packet):
+    if any(rule.matches(packet) for rule in rules):
+        print(f"Blocked: SRC={packet[IP].src}, DST={packet[IP].dst}, PROTOCOL={packet.proto}")
+    else:
+        print(f"Allowed: SRC={packet[IP].src}, DST={packet[IP].dst}, PROTOCOL={packet.proto}")
+
+# Menu-driven program
+def main():
+    while True:
+        print("\nMenu:")
+        print("1. Add Rule")
+        print("2. Display Rules")
+        print("3. Test Packets")
+        print("4. Capture Live Traffic")
+        print("5. Delete Rule")
+        print("6. Exit")
+
+        choice = input("Enter your choice: ")
+
+        if choice == "1":
+            add_rule()
+        elif choice == "2":
+            display_rules()
+        elif choice == "3":
+            test_packet()
+        elif choice == "4":
+            capture_traffic()
+        elif choice == "5":
+            delete_rule()
+        elif choice == "6":
+            print("Exiting firewall...")
+            break
+        else:
+            print("Invalid choice. Try again.")
+
+if __name__ == "__main__":
+    main()
